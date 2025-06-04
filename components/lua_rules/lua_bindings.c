@@ -82,13 +82,9 @@ int l_settimeout(lua_State* L)
 void insert_timer_task(timer_task_t* task)
 {
     timer_task_t** current = &timer_list;
-
-    // 找到第一个唤醒时间晚于当前 task 的位置
     while (*current && (*current)->wakeup_time_us <= task->wakeup_time_us) {
         current = &(*current)->next;
     }
-
-    // 插入 task
     task->next = *current;
     *current = task;
 }
@@ -99,36 +95,21 @@ void timer_process(lua_State* L)
     timer_task_t** current = &timer_list;
     int max_iter = 1000; // 死循环保护
 
-    // 打印 timer_list 状态
-    int task_count = 0;
-    timer_task_t* debug_task = timer_list;
-    // ESP_LOGI("LUA", "timer_process: timer_list status:");
-    while (debug_task && task_count < 20) {
-        // ESP_LOGI("LUA", "  task[%d]: co=%p, wakeup_us=%lld", task_count, debug_task->co, debug_task->wakeup_time_us);
-        debug_task = debug_task->next;
-        task_count++;
-    }
-    if (task_count >= 20) {
-        ESP_LOGW("LUA", "  ...more tasks in timer_list, truncated log");
-    }
-
     while (*current && max_iter-- > 0) {
         timer_task_t* task = *current;
-        ESP_LOGI("LUA", "timer_process: now=%lld, task co=%p, wakeup_time_us=%lld", now, task->co, task->wakeup_time_us);
+        // ESP_LOGI("LUA", "timer_process: now=%lld, task co=%p, wakeup_time_us=%lld", now, task->co, task->wakeup_time_us);
         if (task->wakeup_time_us > now) {
             break;
         }
         lua_State* co = task->co;
         int nresults = 0;
         int status = lua_resume(co, NULL, 0, &nresults);
-        ESP_LOGI("LUA", "timer_process: resume status=%d, nresults=%d", status, nresults);
+        // ESP_LOGI("LUA", "timer_process: resume status=%d, nresults=%d", status, nresults);
         if ((status == LUA_YIELD || status == LUA_OK) && nresults > 0) {
             int found = 0;
             int64_t delay_us = 0;
             for (int i = 0; i < nresults; i++) {
                 int idx = -nresults + i;
-                int type = lua_type(co, idx);
-                ESP_LOGI("LUA", "timer_process: result[%d] type: %s", i, lua_typename(co, type));
                 if (lua_isnumber(co, idx)) {
                     delay_us = (int64_t)lua_tointeger(co, idx);
                     found = 1;
@@ -136,11 +117,12 @@ void timer_process(lua_State* L)
             }
             lua_pop(co, nresults);
             if (found) {
-                ESP_LOGI("LUA", "timer_process: got delay_us=%lld, will reschedule", delay_us);
-                timer_task_t* next = task->next;
+                // 修复：先移除当前节点，再插入
+                *current = task->next;
+                task->next = NULL;
                 task->wakeup_time_us = get_now_us() + delay_us;
                 insert_timer_task(task);
-                *current = next;
+                // *current 已指向下一个，无需 current = next
                 continue;
             } else {
                 ESP_LOGW("LUA", "timer_process: yield/return but no number in results, co=%p, status=%d, nresults=%d", co, status, nresults);

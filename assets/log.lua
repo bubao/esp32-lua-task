@@ -12,7 +12,7 @@ local function loop()
         level = gpio.get_level(pin)
         log("Current GPIO level: " .. level)
         gpio.set_level(pin, level==0 and 1 or 0)
-        coroutine.yield(3*1000*1000)
+        coroutine.yield(0.5*1000*1000)
     end
 end
 
