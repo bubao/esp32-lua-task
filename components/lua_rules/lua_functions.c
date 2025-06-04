@@ -5,7 +5,6 @@
 #include "driver/adc.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
-#include "esp_spi_flash.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,6 +16,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+void insert_timer_task(timer_task_t* task);
 
 static const char* TAG = "lua_system";
 LuaCoroutine coroutines[MAX_COROUTINES] = { 0 }; // 这里定义变量
@@ -121,24 +122,45 @@ static bool load_lua_rule_with_setup(lua_State* L, const char* path)
     // 获取 loop() 作为主协程函数
     lua_getfield(co, -1, "loop");
     if (lua_isfunction(co, -1)) {
+        // 新建一个协程用于 loop
+        lua_State* loop_co = lua_newthread(L); // 用主L创建新协程
+        lua_pushvalue(co, -1); // 把 loop 函数拷贝到 loop_co
+        lua_xmove(co, loop_co, 1);
+
         // 启动 loop，主动 resume 一次，让协程进入 yield 状态
         int nresults = 0;
-        int status = lua_resume(co, NULL, 0, &nresults);
-        if (status != LUA_YIELD && status != LUA_OK) {
-            ESP_LOGE(TAG, "Failed to start loop: %s", lua_tostring(co, -1));
-            lua_pop(co, 1);
-            lua_pop(co, 1);
-            return false;
-        }
-        lua_pop(co, 1); // 弹出 loop
-        // 保存 co 到 coroutines[]
+        int status = lua_resume(loop_co, NULL, 0, &nresults);
+        // 无论初次 yield 是否 number，都要保存 loop_co，防止被 GC
         if (coroutine_count < MAX_COROUTINES) {
-            coroutines[coroutine_count].co = co;
+            coroutines[coroutine_count].co = loop_co;
             strncpy(coroutines[coroutine_count].rule_table_name, rule_table_name, sizeof(coroutines[coroutine_count].rule_table_name));
             coroutines[coroutine_count].is_active = 1;
             coroutines[coroutine_count].wake_up_time_us = 0;
             coroutine_count++;
-            ESP_LOGI(TAG, "Loaded Lua rule: %s", path);
+        }
+        if ((status == LUA_OK || status == LUA_YIELD) && nresults > 0) {
+            int found = 0;
+            int64_t delay_us = 0;
+            for (int i = 0; i < nresults; i++) {
+                int idx = -nresults + i;
+                if (lua_isnumber(loop_co, idx)) {
+                    delay_us = lua_tointeger(loop_co, idx);
+                    found = 1;
+                }
+            }
+            lua_pop(loop_co, nresults);
+            if (found) {
+                ESP_LOGI(TAG, "loop initial yielded/returned delay_us=%lld, will schedule", delay_us);
+                timer_task_t* task = malloc(sizeof(timer_task_t));
+                task->co = loop_co;
+                task->wakeup_time_us = esp_timer_get_time() + delay_us;
+                insert_timer_task(task);
+                lua_pop(co, 1); // 弹出 table
+                ESP_LOGI(TAG, "Loaded Lua rule (yield/return mode): %s", path);
+                return true;
+            }
+        } else {
+            lua_pop(loop_co, nresults); // 弹出所有返回值
         }
         lua_pop(co, 1); // 弹出 table
         return true;

@@ -13,7 +13,7 @@ typedef struct {
 
 typedef struct timer_task {
     lua_State* co;
-    int64_t wakeup_time_ms;
+    int64_t wakeup_time_us; // 统一为微秒
     struct timer_task* next;
 } timer_task_t;
 
@@ -28,5 +28,6 @@ void timer_process(lua_State* L);
 int64_t get_now_ms();
 int l_settimeout(lua_State* L);
 int l_delay(lua_State* L);
-
+void insert_timer_task(timer_task_t* task);
+void remove_timer_task(lua_State* co);
 #endif // LUA_BINDINGS_H
