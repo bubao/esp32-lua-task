@@ -35,7 +35,7 @@ function ConfigLoader.load(config_table)
         end
     end
 
-    return config_table.mqtt
+    return config_table  -- 直接返回整个配置表
 end
 
 return ConfigLoader

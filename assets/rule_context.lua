@@ -1,6 +1,3 @@
--- rule_context.lua
--- 单条规则上下文对象，实现规则的生命周期管理和事件响应
-
 local RuleContext = {}
 RuleContext.__index = RuleContext
 
@@ -16,7 +13,7 @@ RuleContext.__index = RuleContext
 --   on_destroy = function(self) end,
 --   -- 可扩展其他自定义字段，如阈值、设备id等
 -- }
-function RuleContext.new(rule_def)
+function RuleContext.new(rule_def, device_manager)
     assert(type(rule_def) == "table", "rule_def 必须是表")
     assert(type(rule_def.id) == "string", "rule_def.id 必须是字符串")
 
@@ -30,18 +27,31 @@ function RuleContext.new(rule_def)
     self._on_corn = rule_def.on_corn
     self._on_destroy = rule_def.on_destroy
 
+	-- 设备管理对象
+    self.device_manager = device_manager
+
     -- 规则可自行保存状态数据
     self.state = {}
 
-    -- 初始化调用
+    -- 不在这里主动调用 on_init，改由 C 端调用 on_init(config)
+    return self
+end
+
+function RuleContext:get_device_by_id(id)
+    if self.device_manager and type(self.device_manager.get_device_by_id) == "function" then
+        return self.device_manager:get_device_by_id(id)
+    end
+    return nil
+end
+
+-- on_init 支持外部调用时传入 config 表
+function RuleContext:on_init(config)
     if type(self._on_init) == "function" then
-        local ok, err = pcall(self._on_init, self)
+        local ok, err = pcall(self._on_init, self, config)
         if not ok then
             print("[rule_context][" .. self.id .. "] on_init 错误: " .. tostring(err))
         end
     end
-
-    return self
 end
 
 -- 处理事件回调

@@ -8,18 +8,6 @@ local device_templates = require("device_templates")
 
 local M = {}
 
--- 初始化设备和配置（由 C 层触发）
-function M.init()
-    local config = config_loader.load_config()  -- 从 C 层注入配置（已解析的 Lua table）
-    if config.devices then
-        device_templates.init(config.devices)
-    end
-
-    -- MQTT 配置（连接等）由 C 层负责处理
-    -- 可选：将 config.mqtt 返回给 C 端用于建立连接
-    print("[main] 配置初始化完成")
-end
-
 -- 主循环（可选使用，建议 C 层定时调用 tick）
 function M.main_loop()
     while true do

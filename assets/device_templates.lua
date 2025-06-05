@@ -65,6 +65,8 @@ local generic_sensor = {
 local generic_actuator = {
     defaults = {
         type = "actuator",
+        gpio_type = "gpio", -- 可选：gpio, pwm
+        gpio_mode = "input_output", -- 可选：input, output, input_output
         id = nil,
         gpio = nil,
         mode = "digital",
@@ -199,12 +201,7 @@ function DeviceTemplate.new_device(type_name, params)
     local tmpl = DeviceTemplate.templates[type_name]
 
     if not tmpl then
-        -- 不是预设，判断是否是通用类型sensor或actuator
-        if params and params.type and DeviceTemplate.templates[params.type] then
-            tmpl = DeviceTemplate.templates[params.type]
-        else
-            error("未知设备类型: " .. tostring(type_name))
-        end
+        error("未知设备模板ID: " .. tostring(type_name))
     end
 
     local device = {}
@@ -214,7 +211,7 @@ function DeviceTemplate.new_device(type_name, params)
         device[k] = v
     end
 
-    -- 绑定方法
+    -- 绑定方法（除init）
     for k, v in pairs(tmpl) do
         if type(v) == "function" and k ~= "init" then
             device[k] = v
@@ -224,14 +221,17 @@ function DeviceTemplate.new_device(type_name, params)
     -- 赋ID
     device.id = params.id or (type_name .. "_" .. tostring(math.random(10000, 99999)))
 
-    -- 赋参数覆盖默认值
+    -- 赋参数覆盖默认值，但忽略 type 字段，不允许外部覆盖
     for k, v in pairs(params or {}) do
         if k ~= "type" then
             device[k] = v
         end
     end
 
-    -- 调用初始化
+    -- 保持模板内type不被覆盖
+    device.type = tmpl.defaults.type
+
+    -- 调用初始化函数
     if tmpl.init then
         tmpl.init(device, params)
     end

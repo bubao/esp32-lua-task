@@ -4,6 +4,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lua_bindings.h"
 #include "rom/gpio.h"
 #include "soc/gpio_num.h"
 #include <dirent.h>
@@ -35,6 +36,7 @@ void lua_engine_init(void)
 {
     L = luaL_newstate();
     luaL_openlibs(L);
+    register_lua_bindings(L);
 
     lua_getglobal(L, "package");
     lua_getfield(L, -1, "path");

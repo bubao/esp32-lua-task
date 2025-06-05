@@ -13,23 +13,26 @@ const char* device_config = "{ \
         client_id = 'esp32-01' \
     }, \
     devices = { \
-        { id = 'led1', type = 'led', gpio = 15, dir = 'output' } \
+        { id = 'led1', type = 'led', gpio = 15, gpio_mode = 'input_output',gpio_type = 'gpio',name = 'led 灯' } \
     } \
 }";
 
 const char* blink_rule_code[] = {
     "return {\n"
-    "    id = \"blink_gpio15\",\n"
-    "    on_init = function(self)\n"
-    "        local pin = 15\n"
-    "        local count = 0\n"
-    "        local interval = 1000\n"
-    "        local gpio = require(\"gpio\")\n"
-    "        gpio.setup(pin, gpio.OUTPUT)\n"
-    "        self.timer = self:start_timer(interval, function()\n"
-    "            count = (count + 1) % 2\n"
-    "            gpio.write(pin, count)\n"
-    "        end)\n"
+    "    id = \"blink_led1\",\n"
+    "    name = \"Blink LED1\",\n"
+    "    description = \"Blink LED1 every second\",\n"
+    "    devices = { \"led1\" },\n"
+    "    type = \"cron\",\n"
+    "    schedule = \"* * * * * *\", -- 每秒执行\n"
+    "    on_init = function(self, config)\n"
+    "        print(\"Blink rule initialized\")\n"
+    "    end,\n"
+    "    on_cron = function(self, rule_id)\n"
+    "        -- 这里可以添加定时任务逻辑\n"
+    "        -- 例如控制 GPIO 输出\n"
+    "        gpio.set_level(15, 1) -- 打开 LED\n"
+    "        print(\"Cron triggered for rule: \" .. rule_id)\n"
     "    end\n"
     "}\n"
 };
@@ -54,7 +57,7 @@ void app_main(void)
 {
     init_littlefs();
 
-    xTaskCreate(lua_system_task, "lua_system_task", 4096, NULL, 5, NULL);
+    xTaskCreate(lua_system_task, "lua_system_task", 8096, NULL, 5, NULL);
 
     while (1) {
         // 这里可以添加其他Lua任务逻辑
