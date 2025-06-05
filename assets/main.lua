@@ -16,7 +16,7 @@ function M.main_loop()
 
         -- 可扩展：
         -- - 检查 C 层发来的事件队列
-        -- - 判断是否有 corn 到期（可由 C 端调用 dispatch_corn）
+        -- - 判断是否有 cron 到期（可由 C 端调用 dispatch_cron）
         -- - mqtt/on_event 统一处理
 
         -- 为避免占用 CPU，这里可由 C 层通知唤醒，或加 sleep
@@ -45,9 +45,9 @@ function M.on_event(event)
     rules_core.dispatch_event(event)
 end
 
--- C 层 corn 调度回调（传入匹配的 rule_id）
-function M.on_corn_trigger(rule_id)
-    rules_core.dispatch_corn(rule_id)
+-- C 层 cron 调度回调（传入匹配的 rule_id）
+function M.on_cron_trigger(rule_id)
+    rules_core.dispatch_cron(rule_id)
 end
 
 -- 添加规则（支持 MQTT 增量添加）

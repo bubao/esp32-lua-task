@@ -174,14 +174,14 @@ void lua_engine_send_rules(const char** rules_code_arr, int count)
     }
 }
 
-void lua_engine_corn_trigger(const char* rule_id)
+void lua_engine_cron_trigger(const char* rule_id)
 {
     load_main_module();
-    lua_getfield(L, -1, "on_corn_trigger");
+    lua_getfield(L, -1, "on_cron_trigger");
     lua_remove(L, -2);
 
     lua_pushstring(L, rule_id);
-    call_main_function("on_corn_trigger", 1);
+    call_main_function("on_cron_trigger", 1);
 }
 
 void lua_engine_add_rule(const char* rule_json)

@@ -1,3 +1,4 @@
+#include "cron.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -22,16 +23,20 @@ const char* blink_rule_code[] = {
     "    id = \"blink_led1\",\n"
     "    name = \"Blink LED1\",\n"
     "    description = \"Blink LED1 every second\",\n"
-    "    devices = { \"led1\" },\n"
     "    type = \"cron\",\n"
     "    schedule = \"* * * * * *\", -- 每秒执行\n"
     "    on_init = function(self, config)\n"
     "        print(\"Blink rule initialized\")\n"
     "    end,\n"
     "    on_cron = function(self, rule_id)\n"
-    "        -- 这里可以添加定时任务逻辑\n"
-    "        -- 例如控制 GPIO 输出\n"
-    "        gpio.set_level(15, 1) -- 打开 LED\n"
+    "        local led = self:get_device_by_id(\"led1\")\n"
+    "        if led and led.gpio then\n"
+    "            print(\"Blinking LED on GPIO: \" .. led.gpio)\n"
+    "            local gpio_status = gpio.get_level(led.gpio) -- 读取当前状态\n"
+    "            gpio.set_level(led.gpio, gpio_status == 1 and 0 or 1)\n"
+    "        else\n"
+    "            print(\"LED device not found or set_level missing\")\n"
+    "        end\n"
     "        print(\"Cron triggered for rule: \" .. rule_id)\n"
     "    end\n"
     "}\n"
@@ -45,6 +50,7 @@ void lua_system_task(void* pvParameters)
     lua_engine_send_config(device_config); // 内部会调用 on_json_received.lua
     ESP_LOGI(TAG, "Adding blink rule to Lua...");
     lua_engine_send_rules(blink_rule_code, 1);
+    cron_start(); // 启动cron调度器
 
     while (1) {
         // 这里可以添加时间同步逻辑

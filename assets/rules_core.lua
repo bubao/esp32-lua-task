@@ -77,13 +77,13 @@ function rules_core.dispatch_event(event)
     end
 end
 
--- 定时任务调用，触发指定规则的corn逻辑
-function rules_core.dispatch_corn(rule_id)
+-- 定时任务调用，触发指定规则的cron逻辑
+function rules_core.dispatch_cron(rule_id)
     local rule = RULE_MAP[rule_id]
     if rule then
-        rule:handle_corn()
+        rule:handle_cron()
     else
-        log("corn_error", "未找到规则ID: " .. tostring(rule_id))
+        log("cron_error", "未找到规则ID: " .. tostring(rule_id))
     end
 end
 

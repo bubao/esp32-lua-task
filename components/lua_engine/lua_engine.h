@@ -20,8 +20,8 @@ void lua_engine_send_event(const char *device, const char *type, double value);
 // 调用 main.on_mqtt_rule_message(rule_code_array)
 void lua_engine_send_rules(const char **rules_code_arr, int count);
 
-// 调用 main.on_corn_trigger(rule_id)
-void lua_engine_corn_trigger(const char *rule_id);
+// 调用 main.on_cron_trigger(rule_id)
+void lua_engine_cron_trigger(const char *rule_id);
 
 // 调用 main.add_rule(parsed_rule_table)
 void lua_engine_add_rule(const char *rule_json);
