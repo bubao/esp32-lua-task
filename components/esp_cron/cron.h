@@ -58,6 +58,7 @@ struct cron_job_struct
   int id;
   void * load;
   time_t next_execution;
+  int loaded;   // 新加的字段，用来标记是否加载成功
 };
 
 

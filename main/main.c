@@ -24,7 +24,7 @@ const char* blink_rule_code[] = {
     "    name = \"Blink LED1\",\n"
     "    description = \"Blink LED1 every second\",\n"
     "    type = \"cron\",\n"
-    "    schedule = \"* * * * * *\", -- 每秒执行\n"
+    "    schedule = \"*/1 * * * * *\", -- 每秒执行\n"
     "    on_init = function(self, config)\n"
     "        print(\"Blink rule initialized\")\n"
     "    end,\n"

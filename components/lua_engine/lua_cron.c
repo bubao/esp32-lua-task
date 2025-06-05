@@ -1,4 +1,8 @@
 #include "lua_cron.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/portmacro.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "lauxlib.h"
 #include "lua.h"
 #include <stdio.h>
@@ -6,17 +10,31 @@
 #include <string.h>
 
 #define MAX_CRON_JOBS 30
+#define MAX_PENDING_EVENTS 10
 
 typedef struct {
     cron_job* job;
     char* rule_id; // 任务ID字符串
-    int callback_ref; // Lua中回调函数引用
-    int config_ref; // Lua中config表引用，可能为LUA_NOREF
+    int callback_ref; // Lua回调函数引用
+    int config_ref; // Lua config表引用，可能为LUA_NOREF
     lua_State* L; // lua状态机指针
 } lua_cron_job_t;
 
+// 全局任务管理数组
 static lua_cron_job_t cron_jobs[MAX_CRON_JOBS] = { 0 };
 
+// 事件队列（环形缓冲区）
+static lua_cron_job_t* pending_events[MAX_PENDING_EVENTS];
+static int pending_head = 0;
+static int pending_tail = 0;
+
+// 事件队列互斥锁
+static portMUX_TYPE pending_lock = portMUX_INITIALIZER_UNLOCKED;
+
+// 事件信号量，cron_callback触发，worker_task等待
+static SemaphoreHandle_t cron_event_sem = NULL;
+
+// 查找已注册任务
 static lua_cron_job_t* cron_get_job_by_id(const char* rule_id)
 {
     for (int i = 0; i < MAX_CRON_JOBS; ++i) {
@@ -27,50 +45,81 @@ static lua_cron_job_t* cron_get_job_by_id(const char* rule_id)
     return NULL;
 }
 
-// cron回调，由esp_cron调用
+// cron_callback仅放事件并释放信号量（中断安全）
 static void cron_callback(cron_job* job)
 {
     if (!job || !job->data)
         return;
 
     lua_cron_job_t* entry = (lua_cron_job_t*)job->data;
-    lua_State* L = entry->L;
-    if (!L)
-        return;
 
-    printf("[cron_callback] Triggered job '%s' (id=%d)\n", entry->rule_id, job->id);
-
-    int top = lua_gettop(L);
-
-    // 推入回调函数
-    lua_rawgeti(L, LUA_REGISTRYINDEX, entry->callback_ref);
-    if (!lua_isfunction(L, -1)) {
-        lua_settop(L, top);
-        printf("[cron_callback] Callback is not a function\n");
-        return;
-    }
-
-    // 参数1: rule_id
-    lua_pushstring(L, entry->rule_id);
-
-    // 参数2: config 表 或 nil
-    if (entry->config_ref != LUA_NOREF) {
-        lua_rawgeti(L, LUA_REGISTRYINDEX, entry->config_ref);
+    portENTER_CRITICAL(&pending_lock);
+    int next_tail = (pending_tail + 1) % MAX_PENDING_EVENTS;
+    if (next_tail != pending_head) { // 队列未满
+        pending_events[pending_tail] = entry;
+        pending_tail = next_tail;
+        portEXIT_CRITICAL(&pending_lock);
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        xSemaphoreGiveFromISR(cron_event_sem, &xHigherPriorityTaskWoken);
+        if (xHigherPriorityTaskWoken) {
+            portYIELD_FROM_ISR();
+        }
     } else {
-        lua_pushnil(L);
+        portEXIT_CRITICAL(&pending_lock);
+        printf("[cron_callback] pending_events queue full, drop event for %s\n", entry->rule_id);
     }
-
-    // 调用 callback(rule_id, config)
-    if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
-        const char* err = lua_tostring(L, -1);
-        printf("[cron_callback] callback error: %s\n", err);
-        lua_pop(L, 1);
-    }
-
-    lua_settop(L, top);
 }
 
-// Lua接口：cron.register_cron(rule_id, schedule, callback, config)
+// cron_worker_task等待信号量，处理事件
+static void cron_worker_task(void* arg)
+{
+    (void)arg;
+    while (1) {
+        if (xSemaphoreTake(cron_event_sem, portMAX_DELAY) == pdTRUE) {
+            while (1) {
+                portENTER_CRITICAL(&pending_lock);
+                if (pending_head == pending_tail) {
+                    // 队列空
+                    portEXIT_CRITICAL(&pending_lock);
+                    break;
+                }
+                lua_cron_job_t* job = pending_events[pending_head];
+                pending_head = (pending_head + 1) % MAX_PENDING_EVENTS;
+                portEXIT_CRITICAL(&pending_lock);
+
+                if (!job || !job->L)
+                    continue;
+
+                lua_State* L = job->L;
+                int top = lua_gettop(L);
+
+                lua_rawgeti(L, LUA_REGISTRYINDEX, job->callback_ref);
+                if (!lua_isfunction(L, -1)) {
+                    lua_settop(L, top);
+                    printf("[cron_worker] Callback is not a function for '%s'\n", job->rule_id);
+                    continue;
+                }
+
+                lua_pushstring(L, job->rule_id);
+                if (job->config_ref != LUA_NOREF) {
+                    lua_rawgeti(L, LUA_REGISTRYINDEX, job->config_ref);
+                } else {
+                    lua_pushnil(L);
+                }
+
+                if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
+                    const char* err = lua_tostring(L, -1);
+                    printf("[cron_worker] callback error: %s\n", err);
+                    lua_pop(L, 1);
+                }
+
+                lua_settop(L, top);
+            }
+        }
+    }
+}
+
+// Lua接口: cron.register_cron(rule_id, schedule, callback, config)
 static int l_register_cron(lua_State* L)
 {
     const char* rule_id = luaL_checkstring(L, 1);
@@ -78,12 +127,10 @@ static int l_register_cron(lua_State* L)
     luaL_checktype(L, 3, LUA_TFUNCTION); // callback
     int has_config = !lua_isnoneornil(L, 4);
 
-    // 检查是否已有同id任务，防止重复注册
     if (cron_get_job_by_id(rule_id)) {
         return luaL_error(L, "rule_id '%s' already registered", rule_id);
     }
 
-    // 申请管理槽位
     int slot = -1;
     for (int i = 0; i < MAX_CRON_JOBS; ++i) {
         if (cron_jobs[i].job == NULL) {
@@ -95,24 +142,20 @@ static int l_register_cron(lua_State* L)
         return luaL_error(L, "cron job slots full");
     }
 
-    // 复制rule_id字符串
     char* rule_id_copy = strdup(rule_id);
     if (!rule_id_copy) {
         return luaL_error(L, "malloc failed");
     }
 
-    // 引用 callback
     lua_pushvalue(L, 3);
     int callback_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 
-    // 引用 config（可选）
     int config_ref = LUA_NOREF;
     if (has_config) {
         lua_pushvalue(L, 4);
         config_ref = luaL_ref(L, LUA_REGISTRYINDEX);
     }
 
-    // 创建 cron job
     cron_job* job = cron_job_create(schedule, cron_callback, NULL);
     if (!job) {
         free(rule_id_copy);
@@ -121,7 +164,7 @@ static int l_register_cron(lua_State* L)
             luaL_unref(L, LUA_REGISTRYINDEX, config_ref);
         return luaL_error(L, "cron_job_create failed");
     }
-    job->data = &cron_jobs[slot]; // 绑定数据
+    job->data = &cron_jobs[slot];
 
     int schedule_ret = cron_job_schedule(job);
     if (schedule_ret != 0) {
@@ -134,7 +177,6 @@ static int l_register_cron(lua_State* L)
         return luaL_error(L, "cron_job_schedule failed");
     }
 
-    // 保存管理信息
     cron_jobs[slot].job = job;
     cron_jobs[slot].rule_id = rule_id_copy;
     cron_jobs[slot].callback_ref = callback_ref;
@@ -148,7 +190,7 @@ static int l_register_cron(lua_State* L)
     return 1;
 }
 
-// Lua接口：cron.unregister_cron(rule_id)
+// Lua接口: cron.unregister_cron(rule_id)
 static int l_unregister_cron(lua_State* L)
 {
     const char* rule_id = luaL_checkstring(L, 1);
@@ -180,7 +222,7 @@ static int l_unregister_cron(lua_State* L)
     return 1;
 }
 
-// Lua接口：cron.list()
+// Lua接口: cron.list()
 static int l_list_cron_jobs(lua_State* L)
 {
     lua_newtable(L);
@@ -215,4 +257,16 @@ void register_lua_cron(lua_State* L)
 {
     luaL_newlib(L, cronlib);
     lua_setglobal(L, "cron");
+
+    if (!cron_event_sem) {
+        cron_event_sem = xSemaphoreCreateBinary();
+        if (cron_event_sem == NULL) {
+            printf("[cron] Failed to create event semaphore\n");
+            return;
+        }
+        BaseType_t ret = xTaskCreatePinnedToCore(cron_worker_task, "cron_worker", 4096, NULL, 5, NULL, 0);
+        if (ret != pdPASS) {
+            printf("[cron] Failed to create cron_worker_task\n");
+        }
+    }
 }
