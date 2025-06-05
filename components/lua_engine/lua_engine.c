@@ -239,22 +239,3 @@ char* lua_engine_list_rules(void)
     lua_pop(L, 1); // 清理栈
     return result;
 }
-
-// LittleFS 文件系统初始化
-void init_littlefs()
-{
-    esp_vfs_littlefs_conf_t conf = {
-        .base_path = "/assets",
-        .partition_label = "assets",
-        .format_if_mount_failed = true
-    };
-
-    esp_err_t ret = esp_vfs_littlefs_register(&conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount or format filesystem: %s", esp_err_to_name(ret));
-    } else {
-        size_t total = 0, used = 0;
-        esp_littlefs_info("assets", &total, &used);
-        ESP_LOGI(TAG, "LittleFS mounted: total=%d, used=%d", total, used);
-    }
-}
