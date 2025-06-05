@@ -73,9 +73,9 @@ function RuleContext.new(rule_def)
         local self = setmetatable({}, RuleContext) -- 先定义 self
 
         -- 包装函数，确保调用时 self 是 RuleContext 实例
-        local function cron_wrapper()
+        local function cron_wrapper(rule_id)
             if rule_def.on_cron then
-                rule_def.on_cron(self)
+                rule_def.on_cron(self, rule_id)
             end
         end
 

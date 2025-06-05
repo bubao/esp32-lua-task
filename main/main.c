@@ -9,12 +9,12 @@
 static const char* TAG = "main";
 const char* device_config = "{ \
     mqtt = { \
-        host = 'broker.hivemq.com', \
+        host = \"broker.hivemq.com\", \
         port = 1883, \
-        client_id = 'esp32-01' \
+        client_id = \"esp32-01\" \
     }, \
     devices = { \
-        { id = 'led1', type = 'led', gpio = 15, gpio_mode = 'input_output',gpio_type = 'gpio',name = 'led 灯' } \
+        { id = \"led1\", type = \"led\", gpio = 15, gpio_mode = \"input_output\", gpio_type = \"gpio\", name = \"led 灯\" } \
     } \
 }";
 
@@ -39,6 +39,16 @@ const char* blink_rule_code[] = {
     "        end\n"
     "        print(\"Cron triggered for rule: \" .. rule_id)\n"
     "    end\n"
+    "}\n",
+    "return {\n"
+    "    id = \"loop_log\",\n"
+    "    name = \"loop log\",\n"
+    "    description = \"log every second\",\n"
+    "    type = \"cron\",\n"
+    "    schedule = \"*/2 * * * * *\", -- 每秒执行\n"
+    "    on_cron = function(self, rule_id)\n"
+    "        print(\"loop log:Cron triggered for rule: \" .. rule_id)\n"
+    "    end\n"
     "}\n"
 };
 
@@ -49,7 +59,7 @@ void lua_system_task(void* pvParameters)
     ESP_LOGI(TAG, "Sending device config to Lua...");
     lua_engine_send_config(device_config); // 内部会调用 on_json_received.lua
     ESP_LOGI(TAG, "Adding blink rule to Lua...");
-    lua_engine_send_rules(blink_rule_code, 1);
+    lua_engine_send_rules(blink_rule_code, 2);
     cron_start(); // 启动cron调度器
 
     while (1) {

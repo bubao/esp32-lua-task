@@ -81,10 +81,9 @@ void lua_engine_call_init(void)
 {
     call_main_function("init", 0);
 }
-
 void lua_engine_send_config(const char* lua_table_str)
 {
-    // 加载 main 模块
+    // 1. require main 模块，栈顶: [main_table]
     lua_getglobal(L, "require");
     lua_pushstring(L, "main");
     if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
@@ -93,35 +92,36 @@ void lua_engine_send_config(const char* lua_table_str)
         return;
     }
 
-    // 获取 main.on_config_received 函数
+    // 2. 获取 main.on_config_received 函数，栈顶: [main_table, on_config_received]
     lua_getfield(L, -1, "on_config_received");
     if (!lua_isfunction(L, -1)) {
         ESP_LOGE(TAG, "on_config_received is not a function");
-        lua_pop(L, 2); // pop function + main table
+        lua_pop(L, 2); // 弹出 on_config_received 和 main_table
         return;
     }
 
-    lua_remove(L, -2); // 移除 main 模块 table，仅留下函数
+    // 3. 移除 main_table，只留下 on_config_received 函数，栈顶: [on_config_received]
+    lua_remove(L, -2);
 
-    // 构造 Lua 表表达式
+    // 4. 拼接字符串：return + lua_table_str
     char wrapped_code[2048];
     snprintf(wrapped_code, sizeof(wrapped_code), "return %s", lua_table_str);
 
-    // 编译表
+    // 5. 编译字符串为函数，栈顶: [on_config_received, compiled_function]
     if (luaL_loadstring(L, wrapped_code) != LUA_OK) {
         ESP_LOGE(TAG, "Failed to compile config string: %s", lua_tostring(L, -1));
-        lua_pop(L, 2); // function + error
+        lua_pop(L, 2); // compiled_function + on_config_received
         return;
     }
 
-    // 执行，获取 config table
+    // 6. 执行编译后的函数获取配置表，栈顶: [on_config_received, config_table]
     if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
         ESP_LOGE(TAG, "Failed to eval config: %s", lua_tostring(L, -1));
-        lua_pop(L, 2); // function + error
+        lua_pop(L, 2); // config_table/error + on_config_received
         return;
     }
 
-    // 栈上现在：[on_config_received][config_table]
+    // 7. 调用 on_config_received(config_table)，栈顶: [on_config_received, config_table]
     if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
         ESP_LOGE(TAG, "Error calling on_config_received: %s", lua_tostring(L, -1));
         lua_pop(L, 1);
