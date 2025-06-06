@@ -1,4 +1,5 @@
 #include "cron.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -95,22 +96,33 @@ static void timer_cb(void* arg)
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     time_t now;
     time(&now);
+    time_t now_sec = now;
 
+    cron_job* due_jobs[16];
+    int due_count = 0;
     while (1) {
         cron_job* job = cron_job_list_first();
-        if (!job || job->next_execution > now) {
+        if (!job || job->next_execution > now)
             break;
+        // 防抖：同一秒只触发一次
+        if (job->last_triggered_sec == now_sec) {
+            cron_job_list_remove(job->id);
+            if (due_count < 16)
+                due_jobs[due_count++] = job;
+            continue;
         }
+        job->last_triggered_sec = now_sec;
         xQueueSendFromISR(state.task_queue, &job, &xHigherPriorityTaskWoken);
         cron_job_list_remove(job->id);
-        cron_job_schedule(job);
+        if (due_count < 16)
+            due_jobs[due_count++] = job;
     }
-
+    for (int i = 0; i < due_count; ++i) {
+        cron_job_schedule(due_jobs[i]);
+    }
     schedule_next_timer();
-
-    if (xHigherPriorityTaskWoken) {
+    if (xHigherPriorityTaskWoken)
         portYIELD_FROM_ISR();
-    }
 }
 
 static void schedule_next_timer()
@@ -121,6 +133,7 @@ static void schedule_next_timer()
             esp_timer_stop(state.esp_timer);
         return;
     }
+    ESP_LOGI("cron", "Scheduling next job %d at %lld", job->id, job->next_execution);
 
     time_t now;
     time(&now);
@@ -280,13 +293,10 @@ int cron_job_schedule(cron_job* job)
     time(&now);
 
     job->next_execution = cron_next(&(job->expression), now);
+    job->last_triggered_sec = -1; // 每次重新调度时重置
     cron_job_list_insert(job);
 
-    // 提前唤醒定时器，如果这个任务是最先触发的
-    if (state.head && state.head->job == job) {
-        schedule_next_timer();
-    }
-
+    // 不再自动 schedule_next_timer，统一由 timer_cb 或外部调用
     return 0;
 }
 
