@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "init_littlefs.h"
+#include "lua.h"
 #include "lua_engine.h"
 
 static const char* TAG = "main";
@@ -45,7 +46,7 @@ const char* blink_rule_code[] = {
     "    name = \"loop log\",\n"
     "    description = \"log every second\",\n"
     "    type = \"cron\",\n"
-    "    schedule = \"*/2 * * * * *\", -- 每秒执行\n"
+    "    schedule = \"*/2 * * * * *\", -- 每2秒执行\n"
     "    on_cron = function(self, rule_id)\n"
     "        print(\"loop log:Cron triggered for rule: \" .. rule_id)\n"
     "    end\n"
@@ -55,28 +56,53 @@ const char* blink_rule_code[] = {
 void lua_system_task(void* pvParameters)
 {
     ESP_LOGI(TAG, "lua_system_task started");
-    lua_engine_init();
-    ESP_LOGI(TAG, "Sending device config to Lua...");
-    lua_engine_send_config(device_config); // 内部会调用 on_json_received.lua
-    ESP_LOGI(TAG, "Adding blink rule to Lua...");
-    lua_engine_send_rules(blink_rule_code, 2);
-    cron_start(); // 启动cron调度器
 
+    // 初始化Lua引擎
+    if (lua_engine_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize Lua engine");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    lua_State* L = lua_engine_get_state();
+
+    // 发送设备配置
+    ESP_LOGI(TAG, "Sending device config to Lua...");
+    // 验证注册
+
+    lua_engine_send_config(device_config);
+
+    // 添加规则
+    ESP_LOGI(TAG, "Adding rules to Lua...");
+    lua_engine_send_rules(blink_rule_code, 2);
+
+    // 注册Cron回调并启动调度器
+    cron_start();
+
+    // 主循环
     while (1) {
         // 这里可以添加时间同步逻辑
         ESP_LOGI(TAG, "lua_system_task running...");
+
+        // 定期检查Lua内存使用情况
+        // size_t mem_used = lua_gc(L, LUA_GCCOUNT, 0);
+        // ESP_LOGI(TAG, "Lua memory usage: %d KB", mem_used);
+
         vTaskDelay(pdMS_TO_TICKS(5000)); // 每5秒执行一次
     }
 }
 
 void app_main(void)
 {
+    // 初始化文件系统
     init_littlefs();
 
-    xTaskCreate(lua_system_task, "lua_system_task", 8096, NULL, 5, NULL);
+    // 创建Lua系统任务
+    xTaskCreate(lua_system_task, "lua_system_task", 8192, NULL, 5, NULL);
 
+    // 主循环 - 可以添加其他系统任务
     while (1) {
-        // 这里可以添加其他Lua任务逻辑
+        // 这里可以添加其他低优先级任务
         vTaskDelay(pdMS_TO_TICKS(1000));
         ESP_LOGI(TAG, "Main loop running...");
     }

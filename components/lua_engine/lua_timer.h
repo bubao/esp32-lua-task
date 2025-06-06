@@ -1,4 +1,6 @@
-#pragma once
+#ifndef LUA_TIMER_H
+#define LUA_TIMER_H
+
 #include <stdint.h>
 #include <lua.h>
 
@@ -8,5 +10,5 @@ void register_lua_timer(lua_State* L);
 // 在主循环中调用此函数处理所有到期的协程
 void timer_process(lua_State* L);
 
-// 获取当前时间（微秒）
-int64_t get_now_us(void);
+#endif // LUA_REG_H
+
