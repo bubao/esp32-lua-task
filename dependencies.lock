@@ -1,4 +1,11 @@
 dependencies:
+  bubao/esp_cron:
+    component_hash: c127a883562424747e713125f81caa40969634f38b79de3ac37685d5fbf24f6d
+    dependencies: []
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.0.2
   georgik/lua:
     component_hash: 10698fd2d729b63cca8b882e219c3fa3bd8a9adea26f814f2febb624d0385c23
     dependencies:
@@ -24,9 +31,10 @@ dependencies:
       type: service
     version: 1.20.0
 direct_dependencies:
+- bubao/esp_cron
 - georgik/lua
 - idf
 - joltwallet/littlefs
-manifest_hash: 48a46a051554714b9d3b3e7b4d2bef99db1f28325dcf7341a8c641e7a473d9e0
+manifest_hash: d9bafaa983cebcb3fa3ecfde0303d5b9aab57aad1a98088c347746e1b34de12f
 target: esp32s2
 version: 2.0.0

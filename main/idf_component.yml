@@ -16,3 +16,4 @@ dependencies:
   #   public: true
   georgik/lua: ^5.5.0~7
   joltwallet/littlefs: ^1.20.0
+  bubao/esp_cron: ^0.0.2

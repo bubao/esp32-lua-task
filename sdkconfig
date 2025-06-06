@@ -1955,6 +1955,12 @@ CONFIG_WIFI_PROV_STA_ALL_CHANNEL_SCAN=y
 # end of Wi-Fi Provisioning Manager
 
 #
+# esp_cron configuration
+#
+CONFIG_ESP_CRON_ENABLE=y
+# end of esp_cron configuration
+
+#
 # Lua
 #
 CONFIG_LUA_MAXSTACK=1000000
