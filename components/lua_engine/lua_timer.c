@@ -348,9 +348,8 @@ int luaopen_timer(lua_State* L)
  */
 void register_lua_timer(lua_State* L)
 {
-    timer_system_init();
     global_L = L;
-
+    // 注册为模块
     luaL_requiref(L, "timer", luaopen_timer, 1);
     lua_pop(L, 1); // 弹出模块
 

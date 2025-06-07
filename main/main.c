@@ -10,10 +10,18 @@
 static const char* TAG = "main";
 // main.c - 修改设备配置格式为更规范的Lua表
 const char* device_config = "{ \
-    mqtt = { \
-        host = \"broker.hivemq.com\", \
-        port = 1883, \
-        client_id = \"esp32-01\" \
+    base = { \
+        mqtt = { \
+            server = \"localhost\", \
+            port = 1883, \
+            client_id = \"esp32-01\", \
+            keepalive = 60 \
+        }, \
+        system = { \
+            log_level = \"info\", \
+                update_interval = 60 \
+            } \
+        }, \
     }, \
     devices = { \
         { \

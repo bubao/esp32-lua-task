@@ -321,6 +321,23 @@ static int l_is_adc_gpio(lua_State* L)
 }
 
 /**
+ * @brief 注册PWM模块到Lua
+ */
+int luaopen_adc(lua_State* L)
+{
+    const luaL_Reg adc_funcs[] = {
+        { "read_adc", l_read_adc },
+        { "set_adc_atten", l_set_adc_atten },
+        { "adc_to_voltage", l_adc_to_voltage },
+        { "is_adc_gpio", l_is_adc_gpio },
+        { NULL, NULL }
+    };
+
+    luaL_newlib(L, adc_funcs);
+    return 1;
+}
+
+/**
  * @brief 初始化 ADC1，配置所有支持的通道，注册 Lua 函数
  *
  * @param L Lua状态机指针
@@ -338,16 +355,12 @@ void register_lua_adc(lua_State* L)
     uint32_t adc_bitwidth = (uint32_t)DEFAULT_ADC_WIDTH;
     ESP_LOGI(TAG, "ADC1 initialized with %" PRIu32 "-bit resolution", adc_bitwidth);
 
-    // 注册 Lua 函数
-    const luaL_Reg adc_funcs[] = {
-        { "read_adc", l_read_adc },
-        { "set_adc_atten", l_set_adc_atten },
-        { "adc_to_voltage", l_adc_to_voltage },
-        { "is_adc_gpio", l_is_adc_gpio },
-        { NULL, NULL }
-    };
+    // 注册为模块（推荐方式）
+    luaL_requiref(L, "adc", luaopen_adc, 1);
+    lua_pop(L, 1); // 弹出模块表
 
-    luaL_newlib(L, adc_funcs);
+    // 同时注册为全局变量（保持向后兼容性）
+    lua_getglobal(L, "adc");
     lua_setglobal(L, "adc");
 
     ESP_LOGI(TAG, "Lua ADC module registered successfully");
