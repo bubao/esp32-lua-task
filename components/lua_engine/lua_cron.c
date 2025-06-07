@@ -296,6 +296,8 @@ static int l_register_cron(lua_State* L)
         cron_job_destroy(entry->job);
         destroy_job_entry(entry);
         log_cron_event("ERROR", rule_id, "调度失败");
+        lua_pushnil(L);
+
         return luaL_error(L, "调度cron任务失败，错误码: %d", schedule_ret);
     }
 

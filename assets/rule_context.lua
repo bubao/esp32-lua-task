@@ -111,6 +111,7 @@ function RuleContext.new(rule_def)
     self.id = rule_def.id
     self.description = rule_def.description or ""
     self.type = rule_def.type
+	self.schedule = rule_def.schedule -- cron规则的调度表达式
     self.enabled = rule_def.enabled ~= false -- 默认启用
     self.state = {} -- 规则状态存储
     
@@ -163,7 +164,7 @@ function RuleContext:register_cron_job()
     local function cron_wrapper()
         if not self.enabled then return end
         
-        local ok, err = pcall(self._on_cron, self)
+        local ok, err = pcall(self._on_cron, self, self.id)
         if not ok then
             log.error("[RuleContext][" .. self.id .. "] Cron执行错误: " .. err)
         end
@@ -173,7 +174,7 @@ function RuleContext:register_cron_job()
     local result = cron.register_cron(self.id, self.schedule, cron_wrapper)
     
     -- 根据C端返回值处理
-    if result == 0 then
+    if result ~= nil then
         self._cron_registered = true
         return true
     else

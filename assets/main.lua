@@ -16,12 +16,12 @@ function M.init()
     -- 注册事件处理函数
     M.register_event_handlers()
     -- 加载默认配置
-    local ok, err = config_loader.load_default()
-    if not ok then
-        log.error(TAG, "加载默认配置失败: " .. err)
-    else
-        log.info(TAG, "默认配置加载成功")
-    end
+    -- local ok, err = config_loader.load_default()
+    -- if not ok then
+    --     log.error(TAG, "加载默认配置失败: " .. err)
+    -- else
+    --     log.info(TAG, "默认配置加载成功")
+    -- end
     
     -- 加载默认规则
     rules_core.load_default_rules()

@@ -37,8 +37,8 @@ local device_config_rules = {
 	id = { required = true, type = "string" },
 	type = { required = true, type = "string" },
 	gpio = { required = true, type = "number" },
-	gpio_mode = { required = false, type = "string" },
-	gpio_pull = { required = false, type = "string" },
+	gpio_mode = { required = false, type = "number" },
+	gpio_pull = { required = false, type = "number" },
 	enabled = { required = false, type = "boolean" },
 	mode = { required = false, type = "string" }
 }
@@ -180,8 +180,7 @@ function ConfigLoader.load(config_table)
 	}
 	-- 保存当前配置
 	current_config = result
-	log.info("CONFIG_LOADER", "配置加载完成: 成功 %d 个, 失败 %d 个",
-		#initialized_devices, #failed_devices)
+	log.info("CONFIG_LOADER", "配置加载完成: 成功 " .. #initialized_devices .. " 个, 失败 " .. #failed_devices .. " 个")
 	-- 如果所有设备都失败，返回错误
 	if #initialized_devices == 0 and #device_configs > 0 then
 		return nil, "所有设备初始化失败", result
@@ -277,8 +276,7 @@ function ConfigLoader.load_devices(device_configs)
 	else
 		current_config = { base = {}, devices = result }
 	end
-	log.info("CONFIG_LOADER", "设备配置加载完成: 成功 %d 个, 失败 %d 个",
-		#initialized_devices, #failed_devices)
+	log.info("CONFIG_LOADER", "设备配置加载完成: 成功 " .. #initialized_devices .. " 个, 失败 " .. #failed_devices .. " 个")
 	-- 如果所有设备都失败，返回错误
 	if #initialized_devices == 0 and #device_configs > 0 then
 		return nil, "所有设备初始化失败", result

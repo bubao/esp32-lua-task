@@ -150,8 +150,8 @@ local generic_sensor = DeviceTemplate.create_template(
 				if not ok then
 					log.error(TAG, "配置GPIO失败 [" .. self.gpio .. "]: " .. err)
 				else
-					log.info(TAG, "GPIO配置成功 [%d]: mode=%d, pull=%d",
-						self.gpio, self.gpio_mode, self.gpio_pull)
+					log.info(TAG, "GPIO配置成功 [" .. self.gpio .. "]: mode=" .. self.gpio_mode .. ", pull=" ..
+						self.gpio_pull)
 				end
 			end
 			-- 启动轮询
@@ -174,7 +174,7 @@ local generic_sensor = DeviceTemplate.create_template(
 					log.debug(TAG, "传感器值变更: %s [%s] -> %s", self.id, self.type, tostring(value))
 				end
 			end
-			self.poll_timer = timer.setInterval(poll_func,self.poll_interval)
+			self.poll_timer = timer.setInterval(poll_func, self.poll_interval)
 			log.info(TAG, "启动传感器轮询: %s [%dms]", self.id, self.poll_interval)
 		end,
 		-- 停止轮询
@@ -229,8 +229,8 @@ local generic_actuator = DeviceTemplate.create_template(
 				if not ok then
 					log.error(TAG, "配置GPIO失败 [%d]: %s", self.gpio, err)
 				else
-					log.info(TAG, "GPIO配置成功 [%d]: mode=%d, pull=%d",
-						self.gpio, self.gpio_mode, self.gpio_pull)
+					log.info(TAG, "GPIO配置成功 [" .. self.gpio .. "]: mode=" .. self.gpio_mode .. ", pull=" ..
+						self.gpio_pull)
 				end
 			end
 			-- 设置初始状态

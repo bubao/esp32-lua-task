@@ -19,16 +19,15 @@ const char* device_config = "{ \
         }, \
         system = { \
             log_level = \"info\", \
-                update_interval = 60 \
-            } \
-        }, \
+            update_interval = 60 \
+        } \
     }, \
     devices = { \
         { \
             id = \"led1\", \
             type = \"led\", \
             gpio = 15, \
-            gpio_mode = 1, \
+            gpio_mode = gpio.MODE_INPUT_OUTPUT, \
             gpio_pull = 0, \
             name = \"LED灯\" \
         }, \
@@ -56,13 +55,13 @@ const char* blink_rule_code[] = {
     "    on_cron = function(self, rule_id)\n"
     "        local led = self:get_device_by_id(\"led1\")\n"
     "        if led and led.gpio then\n"
-    "            print(\"Blinking LED on GPIO: \" .. led.gpio)\n"
     "            local gpio_status = gpio.get_level(led.gpio) -- 读取当前状态\n"
+    "            print(\"Blinking LED on GPIO: \" .. led.gpio .. \"status: \" .. gpio_status)\n"
     "            gpio.set_level(led.gpio, gpio_status == 1 and 0 or 1)\n"
     "        else\n"
     "            print(\"LED device not found or set_level missing\")\n"
     "        end\n"
-    "        print(\"Cron triggered for rule: \" .. rule_id)\n"
+    "        -- print(\"Cron triggered for rule: \" .. rule_id)\n"
     "    end\n"
     "}\n",
     "return {\n"
@@ -96,23 +95,6 @@ void lua_system_task(void* pvParameters)
 
     lua_engine_send_config(device_config);
     // 添加配置验证代码
-    ESP_LOGI(TAG, "Validating device config in Lua...");
-    lua_getglobal(L, "require");
-    lua_pushstring(L, "config_loader");
-    lua_call(L, 1, 1); // 加载config_loader模块
-
-    lua_getfield(L, -1, "validate_config");
-    lua_pushstring(L, device_config);
-    lua_call(L, 1, 1); // 调用validate_config函数
-
-    bool config_valid = lua_toboolean(L, -1);
-    lua_pop(L, 2); // 弹出结果和config_loader模块
-
-    if (!config_valid) {
-        ESP_LOGE(TAG, "设备配置验证失败");
-    } else {
-        ESP_LOGI(TAG, "设备配置验证成功");
-    }
 
     // 添加规则
     ESP_LOGI(TAG, "Adding rules to Lua...");

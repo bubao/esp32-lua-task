@@ -115,6 +115,7 @@ void lua_engine_call_init(void)
         lua_pop(L, 1);
     }
 }
+
 esp_err_t lua_engine_send_config(const char* lua_table_str)
 {
     // 1. 编译配置字符串
