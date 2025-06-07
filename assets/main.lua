@@ -35,36 +35,42 @@ function M.tick(now_ms)
     rules_core.tick(now_ms)
 end
 
--- 注册事件处理函数
+-- main.lua
 function M.register_event_handlers()
-    -- 注册配置事件处理函数
+    log.info(TAG, "注册事件处理函数...")
+    
     on("config", function(config_data)
+        log.info(TAG, "进入 config 事件处理函数")
         log.info(TAG, "收到配置事件，类型: " .. type(config_data))
         
-        -- 处理配置数据
-        if type(config_data) == "table" then
-            for key, value in pairs(config_data) do
-                log.info(TAG, "配置项 %s: %s", tostring(key), tostring(value))
-            end
+        -- 调试信息
+        log.info(TAG, "config_loader 模块: " .. tostring(config_loader))
+        if config_loader then
+            log.info(TAG, "config_loader.update_config 类型: " .. type(config_loader.update_config))
         end
         
-        -- 更新规则引擎配置
-        rules_core.update_config(config_data)
+        if config_loader and config_loader.update_config then
+            config_loader.update_config(config_data)
+        else
+            log.error(TAG, "config_loader.update_config 函数未定义")
+        end
     end)
     
-    -- 注册规则事件处理函数
     on("rules", function(rules_data)
+        log.info(TAG, "进入 rules 事件处理函数")
         log.info(TAG, "收到规则事件，类型: " .. type(rules_data))
         
-        -- 处理规则数据
-        if type(rules_data) == "table" then
-            for i, rule in ipairs(rules_data) do
-                log.info(TAG, "规则 %d: %s", i, rule.name or "未命名规则")
-            end
+        -- 调试信息
+        log.info(TAG, "rules_core 模块: " .. tostring(rules_core))
+        if rules_core then
+            log.info(TAG, "rules_core.apply_rules 类型: " .. type(rules_core.apply_rules))
         end
         
-        -- 应用新规则
-        rules_core.apply_rules(rules_data)
+        if rules_core and rules_core.apply_rules then
+            rules_core.apply_rules(rules_data)
+        else
+            log.error(TAG, "rules_core.apply_rules 函数未定义")
+        end
     end)
     
     log.info(TAG, "事件处理函数注册完成")

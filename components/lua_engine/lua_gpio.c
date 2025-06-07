@@ -179,27 +179,19 @@ static int l_gpio_set_interrupt(lua_State* L)
     return 0;
 }
 
-/**
- * @brief 注册Lua GPIO模块
- *
- * @param L Lua状态机
- */
-void register_lua_gpio(lua_State* L)
+// GPIO函数列表
+static const luaL_Reg gpio_funcs[] = {
+    { "set_mode", l_gpio_set_mode },
+    { "set_level", l_gpio_set_level },
+    { "get_level", l_gpio_get_level },
+    { "set_interrupt", l_gpio_set_interrupt },
+    { NULL, NULL }
+};
+
+// 注册GPIO模块
+int luaopen_gpio(lua_State* L)
 {
-    lua_newtable(L);
-
-    // 注册函数
-    lua_pushcfunction(L, l_gpio_set_mode);
-    lua_setfield(L, -2, "set_mode");
-
-    lua_pushcfunction(L, l_gpio_set_level);
-    lua_setfield(L, -2, "set_level");
-
-    lua_pushcfunction(L, l_gpio_get_level);
-    lua_setfield(L, -2, "get_level");
-
-    lua_pushcfunction(L, l_gpio_set_interrupt);
-    lua_setfield(L, -2, "set_interrupt");
+    luaL_newlib(L, gpio_funcs);
 
     // 注册常量
     // 模式
@@ -239,6 +231,18 @@ void register_lua_gpio(lua_State* L)
     lua_pushinteger(L, GPIO_PULLDOWN_ENABLE);
     lua_setfield(L, -2, "PULLDOWN_ENABLE");
 
+    return 1;
+}
+
+// 注册GPIO模块（旧方式，保持兼容性）
+void register_lua_gpio(lua_State* L)
+{
+    // 注册为模块（推荐方式）
+    luaL_requiref(L, "gpio", luaopen_gpio, 1);
+    lua_pop(L, 1); // 弹出模块表
+
+    // 同时注册为全局变量（保持向后兼容性）
+    lua_getglobal(L, "gpio");
     lua_setglobal(L, "gpio");
 
     // 初始化GPIO驱动

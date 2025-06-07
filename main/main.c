@@ -8,6 +8,7 @@
 #include "lua_engine.h"
 
 static const char* TAG = "main";
+// main.c - 修改设备配置格式为更规范的Lua表
 const char* device_config = "{ \
     mqtt = { \
         host = \"broker.hivemq.com\", \
@@ -15,7 +16,22 @@ const char* device_config = "{ \
         client_id = \"esp32-01\" \
     }, \
     devices = { \
-        { id = \"led1\", type = \"led\", gpio = 15, gpio_mode = \"input_output\", gpio_type = \"gpio\", name = \"led 灯\" } \
+        { \
+            id = \"led1\", \
+            type = \"led\", \
+            gpio = 15, \
+            gpio_mode = 1, \
+            gpio_pull = 0, \
+            name = \"LED灯\" \
+        }, \
+        { \
+            id = \"button1\", \
+            type = \"button\", \
+            gpio = 2, \
+            gpio_mode = 0, \
+            gpio_pull = 1, \
+            name = \"按钮\" \
+        } \
     } \
 }";
 
@@ -71,6 +87,24 @@ void lua_system_task(void* pvParameters)
     // 验证注册
 
     lua_engine_send_config(device_config);
+    // 添加配置验证代码
+    ESP_LOGI(TAG, "Validating device config in Lua...");
+    lua_getglobal(L, "require");
+    lua_pushstring(L, "config_loader");
+    lua_call(L, 1, 1); // 加载config_loader模块
+
+    lua_getfield(L, -1, "validate_config");
+    lua_pushstring(L, device_config);
+    lua_call(L, 1, 1); // 调用validate_config函数
+
+    bool config_valid = lua_toboolean(L, -1);
+    lua_pop(L, 2); // 弹出结果和config_loader模块
+
+    if (!config_valid) {
+        ESP_LOGE(TAG, "设备配置验证失败");
+    } else {
+        ESP_LOGI(TAG, "设备配置验证成功");
+    }
 
     // 添加规则
     ESP_LOGI(TAG, "Adding rules to Lua...");

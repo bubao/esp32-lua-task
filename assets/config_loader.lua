@@ -3,9 +3,12 @@
 
 local DeviceRegistry = require("device_registry")
 local DeviceTemplate = require("device_templates")
--- local log = require("log")
+local log = require("log")  -- 启用日志记录
 
 local ConfigLoader = {}
+
+-- 当前加载的配置
+local current_config = nil
 
 -- 基础配置校验规则
 local base_config_rules = {
@@ -116,7 +119,11 @@ function ConfigLoader.validate_device_config(device_config)
     end
     
     -- 检查设备类型是否存在
-    if device_config.type and not DeviceTemplate.templates[device_config.type] then
+    if not device_config.type then
+        return false, "设备配置缺少type字段"
+    end
+    
+    if not DeviceTemplate.templates[device_config.type] then
         return false, "未知设备类型: " .. device_config.type
     end
     
@@ -133,9 +140,12 @@ end
 -- @param config_table: 已解析的Lua表，包含base和devices
 -- @return 解析结果或nil, error_message
 function ConfigLoader.load(config_table)
+    log.info("CONFIG_LOADER", "开始加载完整配置...")
+    
     -- 验证基础配置
     local valid, err = ConfigLoader.validate_base_config(config_table.base)
     if not valid then
+        log.error("CONFIG_LOADER", "基础配置错误: " .. err)
         return nil, "基础配置错误: " .. err
     end
     
@@ -147,27 +157,42 @@ function ConfigLoader.load(config_table)
     local failed_devices = {}
     
     for _, dev_conf in ipairs(device_configs) do
+        -- 添加防御性检查
+        if not dev_conf or type(dev_conf) ~= "table" then
+            log.error("CONFIG_LOADER", "无效的设备配置: 不是table类型")
+            table.insert(failed_devices, {config = dev_conf, error = "无效的设备配置: 不是table类型"})
+            goto next_device
+        end
+        
         local valid, err = ConfigLoader.validate_device_config(dev_conf)
         if not valid then
-            print("[ConfigLoader] 无效设备配置:", err)
+            log.error("CONFIG_LOADER", "无效设备配置: " .. err)
             table.insert(failed_devices, {config = dev_conf, error = err})
-        else
-            local ok, device_or_err = pcall(DeviceTemplate.new_device, dev_conf.type, dev_conf)
-            if not ok then
-                print("[ConfigLoader] 设备创建失败:", device_or_err)
-                table.insert(failed_devices, {config = dev_conf, error = device_or_err})
-            elseif device_or_err then
-                -- 注册设备
-                local success, reg_err = pcall(DeviceRegistry.register, device_or_err)
-                if not success then
-                    print("[ConfigLoader] 设备注册失败:", reg_err)
-                    table.insert(failed_devices, {config = dev_conf, error = reg_err})
-                else
-                    print("[ConfigLoader] 成功初始化设备:", device_or_err.id)
-                    table.insert(initialized_devices, device_or_err)
-                end
-            end
+            goto next_device
         end
+        
+        local ok, device_or_err = pcall(DeviceTemplate.new_device, dev_conf.type, dev_conf)
+        if not ok then
+            log.error("CONFIG_LOADER", "设备创建失败: " .. device_or_err)
+            table.insert(failed_devices, {config = dev_conf, error = device_or_err})
+            goto next_device
+        elseif not device_or_err then
+            log.error("CONFIG_LOADER", "设备创建返回nil")
+            table.insert(failed_devices, {config = dev_conf, error = "设备创建返回nil"})
+            goto next_device
+        end
+        
+        -- 注册设备
+        local success, reg_err = pcall(DeviceRegistry.register, device_or_err)
+        if not success then
+            log.error("CONFIG_LOADER", "设备注册失败: " .. reg_err)
+            table.insert(failed_devices, {config = dev_conf, error = reg_err})
+        else
+            log.info("CONFIG_LOADER", "成功初始化设备: " .. device_or_err.id)
+            table.insert(initialized_devices, device_or_err)
+        end
+        
+        ::next_device::
     end
     
     -- 构建返回结果
@@ -182,6 +207,12 @@ function ConfigLoader.load(config_table)
         }
     }
     
+    -- 保存当前配置
+    current_config = result
+    
+    log.info("CONFIG_LOADER", "配置加载完成: 成功 %d 个, 失败 %d 个", 
+             #initialized_devices, #failed_devices)
+    
     -- 如果所有设备都失败，返回错误
     if #initialized_devices == 0 and #device_configs > 0 then
         return nil, "所有设备初始化失败", result
@@ -194,11 +225,22 @@ end
 -- @param base_config: 基础配置表
 -- @return 解析后的基础配置或nil, error_message
 function ConfigLoader.load_base(base_config)
+    log.info("CONFIG_LOADER", "加载基础配置...")
+    
     local valid, err = ConfigLoader.validate_base_config(base_config)
     if not valid then
+        log.error("CONFIG_LOADER", "基础配置错误: " .. err)
         return nil, err
     end
     
+    -- 保存基础配置
+    if current_config then
+        current_config.base = base_config
+    else
+        current_config = { base = base_config, devices = { list = {} } }
+    end
+    
+    log.info("CONFIG_LOADER", "基础配置加载成功")
     return base_config
 end
 
@@ -206,7 +248,10 @@ end
 -- @param device_configs: 设备配置表数组
 -- @return 设备初始化结果或nil, error_message
 function ConfigLoader.load_devices(device_configs)
+    log.info("CONFIG_LOADER", "开始加载设备配置...")
+    
     if type(device_configs) ~= "table" then
+        log.error("CONFIG_LOADER", "设备配置必须是table数组")
         return nil, "设备配置必须是table数组"
     end
     
@@ -214,28 +259,52 @@ function ConfigLoader.load_devices(device_configs)
     local initialized_devices = {}
     local failed_devices = {}
     
-    for _, dev_conf in ipairs(device_configs) do
-        local valid, err = ConfigLoader.validate_device_config(dev_conf)
-        if not valid then
-            print("[ConfigLoader] 无效设备配置:", err)
-            table.insert(failed_devices, {config = dev_conf, error = err})
-        else
-            local ok, device_or_err = pcall(DeviceTemplate.new_device, dev_conf.type, dev_conf)
-            if not ok then
-                print("[ConfigLoader] 设备创建失败:", device_or_err)
-                table.insert(failed_devices, {config = dev_conf, error = device_or_err})
-            elseif device_or_err then
-                -- 注册设备
-                local success, reg_err = pcall(DeviceRegistry.register, device_or_err)
-                if not success then
-                    print("[ConfigLoader] 设备注册失败:", reg_err)
-                    table.insert(failed_devices, {config = dev_conf, error = reg_err})
-                else
-                    print("[ConfigLoader] 成功初始化设备:", device_or_err.id)
-                    table.insert(initialized_devices, device_or_err)
-                end
+    -- 先清除现有设备
+    if current_config and current_config.devices then
+        for _, device in ipairs(current_config.devices.list) do
+            if device.unregister then
+                pcall(device.unregister, device)
             end
         end
+    end
+    
+    for _, dev_conf in ipairs(device_configs) do
+        -- 添加防御性检查
+        if not dev_conf or type(dev_conf) ~= "table" then
+            log.error("CONFIG_LOADER", "无效的设备配置: 不是table类型")
+            table.insert(failed_devices, {config = dev_conf, error = "无效的设备配置: 不是table类型"})
+            goto next_device
+        end
+        
+        local valid, err = ConfigLoader.validate_device_config(dev_conf)
+        if not valid then
+            log.error("CONFIG_LOADER", "无效设备配置: " .. err)
+            table.insert(failed_devices, {config = dev_conf, error = err})
+            goto next_device
+        end
+        
+        local ok, device_or_err = pcall(DeviceTemplate.new_device, dev_conf.type, dev_conf)
+        if not ok then
+            log.error("CONFIG_LOADER", "设备创建失败: " .. device_or_err)
+            table.insert(failed_devices, {config = dev_conf, error = device_or_err})
+            goto next_device
+        elseif not device_or_err then
+            log.error("CONFIG_LOADER", "设备创建返回nil")
+            table.insert(failed_devices, {config = dev_conf, error = "设备创建返回nil"})
+            goto next_device
+        end
+        
+        -- 注册设备
+        local success, reg_err = pcall(DeviceRegistry.register, device_or_err)
+        if not success then
+            log.error("CONFIG_LOADER", "设备注册失败: " .. reg_err)
+            table.insert(failed_devices, {config = dev_conf, error = reg_err})
+        else
+            log.info("CONFIG_LOADER", "成功初始化设备: " .. device_or_err.id)
+            table.insert(initialized_devices, device_or_err)
+        end
+        
+        ::next_device::
     end
     
     -- 构建返回结果
@@ -247,12 +316,118 @@ function ConfigLoader.load_devices(device_configs)
         failed_list = failed_devices
     }
     
+    -- 保存设备配置
+    if current_config then
+        current_config.devices = result
+    else
+        current_config = { base = {}, devices = result }
+    end
+    
+    log.info("CONFIG_LOADER", "设备配置加载完成: 成功 %d 个, 失败 %d 个", 
+             #initialized_devices, #failed_devices)
+    
     -- 如果所有设备都失败，返回错误
     if #initialized_devices == 0 and #device_configs > 0 then
         return nil, "所有设备初始化失败", result
     end
     
     return result
+end
+
+--- 更新配置（合并新配置到现有配置）
+-- @param new_config: 新配置表
+-- @return 更新后的配置或nil, error_message
+function ConfigLoader.update_config(new_config)
+    log.info("CONFIG_LOADER", "开始更新配置...")
+    
+    if not current_config then
+        log.info("CONFIG_LOADER", "没有现有配置，执行完整加载")
+        return ConfigLoader.load(new_config)
+    end
+    
+    -- 更新基础配置
+    if new_config.base then
+        local valid, err = ConfigLoader.validate_base_config(new_config.base)
+        if not valid then
+            log.error("CONFIG_LOADER", "新基础配置无效: " .. err)
+            return nil, "新基础配置无效: " .. err
+        end
+        
+        -- 合并基础配置（保留现有配置中不存在的字段）
+        for key, value in pairs(new_config.base) do
+            current_config.base[key] = value
+        end
+        
+        log.info("CONFIG_LOADER", "基础配置更新成功")
+    end
+    
+    -- 更新设备配置
+    if new_config.devices then
+        -- 先卸载所有现有设备
+        for _, device in ipairs(current_config.devices.list or {}) do
+            if device.unregister then
+                pcall(device.unregister, device)
+            end
+        end
+        
+        -- 加载新设备
+        local device_result, err = ConfigLoader.load_devices(new_config.devices)
+        if not device_result then
+            log.error("CONFIG_LOADER", "设备配置更新失败: " .. err)
+            return nil, "设备配置更新失败: " .. err
+        end
+        
+        log.info("CONFIG_LOADER", "设备配置更新成功")
+    end
+    
+    log.info("CONFIG_LOADER", "配置更新完成")
+    return current_config
+end
+
+--- 加载默认配置
+-- @return 配置结果或nil, error_message
+function ConfigLoader.load_default()
+    log.info("CONFIG_LOADER", "加载默认配置...")
+    
+    -- 这里应该从默认源加载配置，例如内置配置或文件
+    -- 以下是示例默认配置，实际实现可能需要根据项目需求调整
+    
+    local default_config = {
+        base = {
+            mqtt = {
+                server = "localhost",
+                port = 1883,
+                client_id = "esp32-device",
+                keepalive = 60
+            },
+            system = {
+                log_level = "info",
+                update_interval = 60
+            }
+        },
+        devices = {
+            {
+                id = "led1",
+                type = "led",
+                gpio = 2,
+                enabled = true
+            },
+            {
+                id = "button1",
+                type = "button",
+                gpio = 4,
+                enabled = true
+            }
+        }
+    }
+    
+    return ConfigLoader.load(default_config)
+end
+
+--- 获取当前配置
+-- @return 当前配置
+function ConfigLoader.get_current_config()
+    return current_config
 end
 
 return ConfigLoader

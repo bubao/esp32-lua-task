@@ -3,8 +3,10 @@
 
 local RuleContext = require("rule_context")
 local log = require("log")
+local file = require("file") -- 引入文件操作模块
 
 local TAG = "RULES_CORE"
+local RULES_DIR = "assets/rules"  -- 规则文件目录
 
 local rules_core = {}
 
@@ -88,12 +90,158 @@ function rules_core.load_all_from_strings(rules_code_arr)
     return success_count, failed_count
 end
 
--- 加载默认规则
+-- 加载默认规则（从文件系统读取）
 function rules_core.load_default_rules()
     log.info(TAG, "加载默认规则...")
-    -- 示例: 可以从内置资源加载默认规则
-    -- 实际实现可能依赖于具体项目需求
-    return 0
+    
+    -- 检查规则目录是否存在
+    local exists, is_dir = file.exists(RULES_DIR)
+    if not exists then
+        log.info(TAG, "规则目录不存在: %s，使用内置默认规则", RULES_DIR)
+        return rules_core.load_builtin_rules()
+    end
+    
+    if not is_dir then
+        log.error(TAG, "规则路径不是目录: %s", RULES_DIR)
+        return 0, "规则路径不是目录"
+    end
+    
+    -- 读取目录内容
+    local files, err = file.listdir(RULES_DIR)
+    if not files then
+        log.error(TAG, "读取规则目录失败: %s", err or "未知错误")
+        return rules_core.load_builtin_rules()
+    end
+    
+    -- 过滤出 .lua 文件
+    local rule_files = {}
+    for _, file_name in ipairs(files) do
+        if file_name:match("%.lua$") then
+            table.insert(rule_files, file_name)
+        end
+    end
+    
+    -- 如果没有规则文件，使用内置默认规则
+    if #rule_files == 0 then
+        log.info(TAG, "规则目录中没有找到 .lua 文件，使用内置默认规则")
+        return rules_core.load_builtin_rules()
+    end
+    
+    log.info(TAG, "找到 %d 个规则文件", #rule_files)
+    
+    -- 读取所有规则文件内容
+    local rule_contents = {}
+    for _, file_name in ipairs(rule_files) do
+        local full_path = RULES_DIR .. "/" .. file_name
+        local content, read_err = file.read(full_path)
+        
+        if content then
+            table.insert(rule_contents, content)
+            log.info(TAG, "成功读取规则文件: %s", full_path)
+        else
+            log.error(TAG, "读取规则文件失败: %s，错误: %s", full_path, read_err)
+        end
+    end
+    
+    -- 如果没有成功读取任何规则文件，使用内置默认规则
+    if #rule_contents == 0 then
+        log.error(TAG, "未能从文件系统加载任何规则，使用内置默认规则")
+        return rules_core.load_builtin_rules()
+    end
+    
+    -- 加载规则内容
+    return rules_core.load_all_from_strings(rule_contents)
+end
+
+-- 加载内置默认规则
+function rules_core.load_builtin_rules()
+    log.info(TAG, "加载内置默认规则...")
+    
+    -- 使用硬编码的示例规则
+    local default_rules = {
+        -- 默认规则1: 系统状态监控
+        [[
+            return {
+                id = "system_monitor",
+                name = "系统状态监控",
+                description = "监控系统状态并记录日志",
+                type = "system",
+                
+                -- 初始化函数
+                init = function(ctx)
+                    log.info("RULE", "系统监控规则已初始化")
+                    return true
+                end,
+                
+                -- 事件处理函数
+                handle_event = function(ctx, event)
+                    if event.type == "system" then
+                        log.info("RULE", "系统事件: %s", event.message or "未知事件")
+                    end
+                end,
+                
+                -- 定时任务
+                cron = {
+                    "*/5 * * * *",  -- 每5分钟执行一次
+                    function(ctx)
+                        log.info("RULE", "系统监控规则定时执行")
+                        -- 执行系统监控逻辑
+                    end
+                }
+            }
+        ]],
+        
+        -- 默认规则2: 设备状态检查
+        [[
+            return {
+                id = "device_check",
+                name = "设备状态检查",
+                description = "定期检查设备状态",
+                type = "device",
+                
+                init = function(ctx)
+                    log.info("RULE", "设备检查规则已初始化")
+                    return true
+                end,
+                
+                cron = {
+                    "*/10 * * * *",  -- 每10分钟执行一次
+                    function(ctx)
+                        -- 使用 pcall 捕获可能的错误
+                        local ok, devices = pcall(function() 
+                            return DeviceRegistry and DeviceRegistry.list_devices() or {} 
+                        end)
+                        
+                        if ok then
+                            log.info("RULE", "检查设备状态，共有 %d 个设备", #devices)
+                            -- 检查设备状态逻辑
+                        else
+                            log.error("RULE", "获取设备列表失败: %s", devices)
+                        end
+                    end
+                }
+            }
+        ]]
+    }
+    
+    return rules_core.load_all_from_strings(default_rules)
+end
+
+-- 应用规则数据
+function rules_core.apply_rules(rules_data) 
+    log.info(TAG, "应用规则数据，类型: " .. type(rules_data))
+    
+    -- 检查规则数据有效性
+    if not rules_data or type(rules_data) ~= "table" then 
+        log.error(TAG, "无效的规则数据，必须是table类型")
+        return 0, "无效的规则数据"
+    end
+    
+    -- 清空现有规则
+    rules_core.cleanup()
+    
+    -- 加载新规则
+    return rules_core.load_all_from_strings(rules_data)
 end
 
 -- 定时tick调用，传入当前时间ms，触发规则定时逻辑

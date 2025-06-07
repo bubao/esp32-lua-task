@@ -159,9 +159,11 @@ esp_err_t lua_engine_send_config(const char* lua_table_str)
     if (lua_pcall(L, 2, 0, 0) != LUA_OK) {
         ESP_LOGE(TAG, "Error calling trigger: %s", lua_tostring(L, -1));
         lua_pop(L, 1);
+        luaL_unref(L, LUA_REGISTRYINDEX, config_ref); // 释放引用
+        return ESP_FAIL; // 返回错误状态
     }
 
-    // 释放配置表引用
+    // 5. 释放配置表引用（仅在调用成功后释放）
     luaL_unref(L, LUA_REGISTRYINDEX, config_ref);
 
     ESP_LOGI(TAG, "Device config successfully sent to Lua.");

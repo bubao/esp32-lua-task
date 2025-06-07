@@ -6,15 +6,16 @@ local log = require("log")
 local RuleContext = {}
 RuleContext.__index = RuleContext
 
--- 规则类型定义
+-- 规则类型定义（添加SYSTEM类型）
 local RULE_TYPES = {
     CRON = "cron",
     EVENT = "event",
     THRESHOLD = "threshold",
-    TICK = "tick"
+    TICK = "tick",
+    SYSTEM = "system"  -- 添加系统规则类型
 }
 
--- 规则类型验证器
+-- 规则类型验证器（添加system规则类型的验证器）
 local rule_validators = {
     [RULE_TYPES.CRON] = function(rule_def)
         if type(rule_def.schedule) ~= "string" then
@@ -51,10 +52,21 @@ local rule_validators = {
             return false, "type为'tick'时必须定义on_tick函数"
         end
         return true
+    end,
+    
+    -- 添加system规则类型的验证器
+    [RULE_TYPES.SYSTEM] = function(rule_def)
+        if not rule_def.system_action then
+            return false, "system规则必须定义system_action字段"
+        end
+        if type(rule_def.on_system_event) ~= "function" then
+            return false, "system规则必须定义on_system_event函数"
+        end
+        return true
     end
 }
 
--- 验证规则定义
+-- 验证规则定义（修改此函数以处理system:前缀）
 local function validate_rule_def(rule_def)
     local rule_type = rule_def.type
     
@@ -62,6 +74,17 @@ local function validate_rule_def(rule_def)
         return false, "规则定义缺少type字段"
     end
     
+    -- 处理system:前缀的规则类型
+    if type(rule_type) == "string" and rule_type:sub(1, 7) == "system:" then
+        rule_def.type = RULE_TYPES.SYSTEM  -- 规范化类型
+        rule_def.system_action = rule_type:sub(8)  -- 提取action部分
+        local validator = rule_validators[RULE_TYPES.SYSTEM]
+        if validator then
+            return validator(rule_def)
+        end
+    end
+    
+    -- 现有验证逻辑
     local validator = rule_validators[rule_type]
     if not validator then
         return false, "未知规则类型: " .. rule_type
@@ -110,6 +133,12 @@ function RuleContext.new(rule_def)
     -- 初始化方法
     if type(rule_def.init) == "function" then
         self._init = rule_def.init
+    end
+    
+    -- 特殊处理system规则
+    if rule_def.type == RULE_TYPES.SYSTEM then
+        self.system_action = rule_def.system_action
+        self._on_system_event = rule_def.on_system_event
     end
     
     -- 注册cron任务
@@ -181,9 +210,20 @@ function RuleContext:mounted()
     end
 end
 
--- 处理事件
+-- 处理事件（修改此函数以处理system事件）
 function RuleContext:handle_event(event)
     if not self.enabled then return end
+    
+    -- 处理system事件
+    if self.type == RULE_TYPES.SYSTEM and event.event_type:sub(1, 7) == "system:" then
+        if self._on_system_event then
+            local ok, err = pcall(self._on_system_event, self, event)
+            if not ok then
+                log.error("[RuleContext][" .. self.id .. "] 处理system事件错误: " .. err)
+            end
+            return
+        end
+    end
     
     if self._on_event then
         local ok, err = pcall(self._on_event, self, event)
